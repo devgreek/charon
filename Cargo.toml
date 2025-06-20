@@ -1,0 +1,15 @@
+[package]
+name = "socks5-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] } # "full" includes io, net, etc.
+bytes = "1"
+tokio-util = { version = "0.7", features = ["codec"] } # For framed I/O if you prefer
+log = "0.4" # For logging
+env_logger = "0.11" # To initialize logging
+tokio-rustls = "0.24"
+rustls = "0.21"
+rustls-pemfile = "1.0"
+webpki-roots = "0.25"
