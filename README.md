@@ -1,4 +1,4 @@
-# socks5-rs
+# Charon
 
 A SOCKS5 protocol implementation in Rust.
 
