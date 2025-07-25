@@ -8,12 +8,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a new SOCKS5 client with authentication
     let client = Client::with_auth(
-        "127.0.0.1".to_string(), 
+        "127.0.0.1".to_string(),
         1080,
-        "user1".to_string(), 
-        "password1".to_string()
+        "user1".to_string(),
+        "password1".to_string(),
     );
-    
+
     // Connect to example.com through the SOCKS5 proxy with authentication
     let mut stream = client.connect_to_domain("example.com", 80).await?;
 
@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Read and print the response
     let mut buffer = Vec::new();
     stream.read_to_end(&mut buffer).await?;
-    
+
     // Only print the first 1000 characters to avoid flooding the console
     let response = String::from_utf8_lossy(&buffer);
     let preview_len = response.len().min(1000);

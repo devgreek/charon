@@ -10,6 +10,11 @@ tokio-util = { version = "0.7", features = ["codec"] } # For framed I/O if you p
 log = "0.4" # For logging
 env_logger = "0.11" # To initialize logging
 tokio-rustls = "0.24"
-rustls = "0.21"
+rustls = { version = "0.21", features = ["dangerous_configuration"] }
 rustls-pemfile = "1.0"
 webpki-roots = "0.25"
+anyhow = "1.0.98"
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["server", "client"] }
+http-body-util = "0.1"
+rcgen = "0.13" # For generating self-signed certificates for testing

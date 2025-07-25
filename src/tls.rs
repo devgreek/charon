@@ -37,39 +37,36 @@ impl TlsServer {
     pub fn new(options: TlsServerOptions) -> io::Result<Self> {
         let server = Server::from_options(options.server_options);
         let tls_config = load_tls_config(&options.cert_path, &options.key_path)?;
-        
-        Ok(TlsServer {
-            server,
-            tls_config,
-        })
+
+        Ok(TlsServer { server, tls_config })
     }
 
     pub async fn run(&self, bind_addr: &str) -> io::Result<()> {
         let listener = TcpListener::bind(bind_addr).await?;
         info!("SOCKS5 TLS server listening on {}", bind_addr);
-        
+
         let acceptor = TlsAcceptor::from(Arc::clone(&self.tls_config));
-        
+
         loop {
             match listener.accept().await {
                 Ok((stream, addr)) => {
                     info!("Accepted connection from: {}", addr);
                     let acceptor = acceptor.clone();
                     let server = self.server.clone();
-                    
+
                     tokio::spawn(async move {
                         match acceptor.accept(stream).await {
                             Ok(tls_stream) => {
                                 if let Err(e) = server.handle_client(tls_stream).await {
                                     error!("Error handling TLS client: {}", e);
                                 }
-                            },
+                            }
                             Err(e) => {
                                 error!("TLS handshake failed: {}", e);
                             }
                         }
                     });
-                },
+                }
                 Err(e) => {
                     error!("Failed to accept connection: {}", e);
                 }
@@ -120,30 +117,36 @@ fn load_tls_config(cert_path: &str, key_path: &str) -> io::Result<Arc<ServerConf
 #[allow(dead_code)]
 pub fn generate_self_signed_cert() -> io::Result<()> {
     use std::process::Command;
-    
+
     println!("Generating self-signed certificate...");
-    
+
     let status = Command::new("openssl")
         .args(&[
-            "req", "-x509", 
-            "-newkey", "rsa:4096", 
-            "-keyout", "key.pem", 
-            "-out", "cert.pem", 
-            "-days", "365", 
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:4096",
+            "-keyout",
+            "key.pem",
+            "-out",
+            "cert.pem",
+            "-days",
+            "365",
             "-nodes",
-            "-subj", "/CN=localhost"
+            "-subj",
+            "/CN=localhost",
         ])
         .status()?;
-    
+
     if !status.success() {
         return Err(io::Error::new(
-            io::ErrorKind::Other, 
-            "Failed to generate certificate"
+            io::ErrorKind::Other,
+            "Failed to generate certificate",
         ));
     }
-    
+
     println!("Certificate generated: cert.pem");
     println!("Key generated: key.pem");
-    
+
     Ok(())
 }

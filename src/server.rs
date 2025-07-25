@@ -1,18 +1,20 @@
-use std::sync::Arc;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::io::{self, AsyncWriteExt};
 use log::{debug, error, info};
+use std::sync::Arc;
+use tokio::io::{self, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
 
 use crate::protocol::{
-    AUTH_NONE, CMD_CONNECT, HandshakeRequest, Reply, Request, REP_ADDRESS_TYPE_NOT_SUPPORTED,
-    REP_COMMAND_NOT_SUPPORTED, REP_CONNECTION_REFUSED, REP_HOST_UNREACHABLE, REP_NETWORK_UNREACHABLE,
-    REP_SUCCEEDED, SOCKS_VERSION, SocksAddr, AUTH_PASSWORD, AUTH_VERSION, AUTH_SUCCESS, AUTH_FAILURE, UserPassAuth
+    AUTH_FAILURE, AUTH_NONE, AUTH_PASSWORD, AUTH_SUCCESS, AUTH_VERSION, CMD_CONNECT,
+    HandshakeRequest, REP_ADDRESS_TYPE_NOT_SUPPORTED, REP_COMMAND_NOT_SUPPORTED,
+    REP_CONNECTION_REFUSED, REP_HOST_UNREACHABLE, REP_NETWORK_UNREACHABLE, REP_SUCCEEDED, Reply,
+    Request, SOCKS_VERSION, SocksAddr, UserPassAuth,
 };
 
+#[derive(Clone)]
 pub struct Server {
     bind_addr: String,
     auth_required: bool,
-    credentials: Option<Vec<(String, String)>>,
+    credentials: Option<Arc<Vec<(String, String)>>>,
 }
 
 pub struct ServerOptions {
@@ -33,7 +35,7 @@ impl Default for ServerOptions {
 
 impl Server {
     pub fn new(bind_addr: String) -> Self {
-        Server { 
+        Server {
             bind_addr,
             auth_required: false,
             credentials: None,
@@ -41,10 +43,10 @@ impl Server {
     }
 
     pub fn from_options(options: ServerOptions) -> Self {
-        Server { 
+        Server {
             bind_addr: options.bind_addr,
             auth_required: options.auth_required,
-            credentials: options.credentials,
+            credentials: options.credentials.map(Arc::new),
         }
     }
 
@@ -57,39 +59,53 @@ impl Server {
                 Ok((stream, addr)) => {
                     info!("New connection from {}", addr);
                     let auth_required = self.auth_required;
-                    let credentials = self.credentials.clone();
-                    
+                    let credentials = self.credentials.clone().map(|arc| (*arc).clone());
+
                     tokio::spawn(async move {
                         if let Err(e) = handle_client(stream, auth_required, credentials).await {
                             error!("Error handling client: {}", e);
                         }
                     });
-                },
+                }
                 Err(e) => {
                     error!("Failed to accept connection: {}", e);
                 }
             }
         }
     }
+
+    // Generic handle_client method that works with any stream type
+    pub async fn handle_client<S>(&self, stream: S) -> io::Result<()>
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
+        let auth_required = self.auth_required;
+        let credentials = self.credentials.clone();
+
+        handle_stream(stream, auth_required, credentials).await
+    }
 }
 
 async fn handle_client(
     mut stream: TcpStream,
     auth_required: bool,
-    credentials: Option<Vec<(String, String)>>
+    credentials: Option<Vec<(String, String)>>,
 ) -> io::Result<()> {
     // SOCKS5 handshake
     let handshake = HandshakeRequest::read_from(&mut stream).await?;
-    debug!("Received handshake with {} methods", handshake.methods.len());
+    debug!(
+        "Received handshake with {} methods",
+        handshake.methods.len()
+    );
 
     // Authentication handling
     if auth_required && handshake.methods.contains(&AUTH_PASSWORD) {
         // Send back auth choice (username/password auth)
         stream.write_all(&[SOCKS_VERSION, AUTH_PASSWORD]).await?;
-        
+
         // Read auth data
         let auth = UserPassAuth::read_from(&mut stream).await?;
-        
+
         // Validate credentials
         let auth_successful = if let Some(creds) = &credentials {
             creds.iter().any(|(username, password)| {
@@ -99,26 +115,35 @@ async fn handle_client(
             // No credentials specified, but auth required - deny all
             false
         };
-        
+
         if !auth_successful {
             stream.write_all(&[AUTH_VERSION, AUTH_FAILURE]).await?;
-            return Err(io::Error::new(io::ErrorKind::PermissionDenied, "Authentication failed"));
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "Authentication failed",
+            ));
         }
-        
+
         // Notify success
         stream.write_all(&[AUTH_VERSION, AUTH_SUCCESS]).await?;
         debug!("Authentication successful for user: {}", auth.username);
     } else if auth_required {
         // Auth required but no acceptable auth methods
         stream.write_all(&[SOCKS_VERSION, 0xFF]).await?;
-        return Err(io::Error::new(io::ErrorKind::Other, "No acceptable auth methods"));
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "No acceptable auth methods",
+        ));
     } else if handshake.methods.contains(&AUTH_NONE) {
         // No auth required
         stream.write_all(&[SOCKS_VERSION, AUTH_NONE]).await?;
     } else {
         // No acceptable auth methods
         stream.write_all(&[SOCKS_VERSION, 0xFF]).await?;
-        return Err(io::Error::new(io::ErrorKind::Other, "No acceptable auth methods"));
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "No acceptable auth methods",
+        ));
     }
 
     // Process the request
@@ -127,19 +152,109 @@ async fn handle_client(
 
     // Handle based on command
     match request.command {
-        CMD_CONNECT => handle_connect(stream, request.addr).await,
+        CMD_CONNECT => connect_and_relay(stream, request.addr).await,
         _ => {
             // Command not supported
             let reply = Reply::new(REP_COMMAND_NOT_SUPPORTED, request.addr);
             reply.write_to(&mut stream).await?;
-            Err(io::Error::new(io::ErrorKind::Other, "Command not supported"))
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Command not supported",
+            ))
         }
     }
 }
 
-async fn handle_connect(mut client: TcpStream, addr: SocksAddr) -> io::Result<()> {
+async fn handle_stream<S>(
+    mut stream: S,
+    auth_required: bool,
+    credentials: Option<Arc<Vec<(String, String)>>>,
+) -> io::Result<()>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    use tokio::io::AsyncReadExt;
+
+    // SOCKS5 handshake
+    let handshake = HandshakeRequest::read_from(&mut stream).await?;
+    debug!(
+        "Received handshake with {} methods",
+        handshake.methods.len()
+    );
+
+    // Authentication handling
+    if auth_required && handshake.methods.contains(&AUTH_PASSWORD) {
+        // Send back auth choice (username/password auth)
+        stream.write_all(&[SOCKS_VERSION, AUTH_PASSWORD]).await?;
+
+        // Read auth data
+        let auth = UserPassAuth::read_from(&mut stream).await?;
+
+        // Validate credentials
+        let auth_successful = if let Some(creds) = &credentials {
+            creds.iter().any(|(username, password)| {
+                username == &auth.username && password == &auth.password
+            })
+        } else {
+            // No credentials specified, but auth required - deny all
+            false
+        };
+
+        if !auth_successful {
+            stream.write_all(&[AUTH_VERSION, AUTH_FAILURE]).await?;
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "Authentication failed",
+            ));
+        }
+
+        // Notify success
+        stream.write_all(&[AUTH_VERSION, AUTH_SUCCESS]).await?;
+        debug!("Authentication successful for user: {}", auth.username);
+    } else if auth_required {
+        // Auth required but no acceptable auth methods
+        stream.write_all(&[SOCKS_VERSION, 0xFF]).await?;
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "No acceptable auth methods",
+        ));
+    } else if handshake.methods.contains(&AUTH_NONE) {
+        // No auth required
+        stream.write_all(&[SOCKS_VERSION, AUTH_NONE]).await?;
+    } else {
+        // No acceptable auth methods
+        stream.write_all(&[SOCKS_VERSION, 0xFF]).await?;
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "No acceptable auth methods",
+        ));
+    }
+
+    // Process the request
+    let request = Request::read_from(&mut stream).await?;
+    debug!("Received request for command {}", request.command);
+
+    // Handle based on command
+    match request.command {
+        CMD_CONNECT => connect_and_relay(stream, request.addr).await,
+        _ => {
+            // Command not supported
+            let reply = Reply::new(REP_COMMAND_NOT_SUPPORTED, request.addr);
+            reply.write_to(&mut stream).await?;
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Command not supported",
+            ))
+        }
+    }
+}
+
+async fn connect_and_relay<S>(mut client: S, addr: SocksAddr) -> io::Result<()>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
     debug!("Connecting to {:?}", addr.to_string());
-    
+
     // Resolve domain name if necessary
     let dest_addr = match &addr {
         SocksAddr::Domain(domain, port) => {
@@ -148,30 +263,39 @@ async fn handle_connect(mut client: TcpStream, addr: SocksAddr) -> io::Result<()
                     if let Some(addr) = addresses.next() {
                         addr
                     } else {
-                        let reply = Reply::new(REP_HOST_UNREACHABLE, addr);
+                        let reply = Reply::new(REP_HOST_UNREACHABLE, addr.clone());
                         reply.write_to(&mut client).await?;
-                        return Err(io::Error::new(io::ErrorKind::Other, "Could not resolve domain"));
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "Could not resolve domain",
+                        ));
                     }
-                },
+                }
                 Err(_) => {
                     let reply = Reply::new(REP_HOST_UNREACHABLE, addr.clone());
                     reply.write_to(&mut client).await?;
-                    return Err(io::Error::new(io::ErrorKind::Other, "Could not resolve domain"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Could not resolve domain",
+                    ));
                 }
             }
-        },
+        }
         _ => {
             // If it's an IP address, just convert it to a socket address
             if let Some(socket_addr) = addr.to_socket_addr() {
                 socket_addr
             } else {
-                let reply = Reply::new(REP_ADDRESS_TYPE_NOT_SUPPORTED, addr);
+                let reply = Reply::new(REP_ADDRESS_TYPE_NOT_SUPPORTED, addr.clone());
                 reply.write_to(&mut client).await?;
-                return Err(io::Error::new(io::ErrorKind::Other, "Address type not supported"));
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Address type not supported",
+                ));
             }
         }
     };
-    
+
     // Connect to the destination
     match TcpStream::connect(dest_addr).await {
         Ok(mut server) => {
@@ -183,7 +307,7 @@ async fn handle_connect(mut client: TcpStream, addr: SocksAddr) -> io::Result<()
                     } else {
                         SocksAddr::Ipv6(addr.ip().to_string().parse().unwrap(), addr.port())
                     }
-                },
+                }
                 Err(_) => addr.clone(), // Fallback to original address
             };
 
@@ -191,18 +315,20 @@ async fn handle_connect(mut client: TcpStream, addr: SocksAddr) -> io::Result<()
             reply.write_to(&mut client).await?;
 
             // Proxy data between client and server
-            match io::copy_bidirectional(&mut client, &mut server).await {
+            match tokio::io::copy_bidirectional(&mut client, &mut server).await {
                 Ok((bytes_to_server, bytes_to_client)) => {
-                    debug!("Connection closed: {} bytes sent, {} bytes received", 
-                          bytes_to_server, bytes_to_client);
+                    debug!(
+                        "Connection closed: {} bytes sent, {} bytes received",
+                        bytes_to_server, bytes_to_client
+                    );
                     Ok(())
-                },
+                }
                 Err(e) => {
                     error!("Error during data transfer: {}", e);
                     Err(e)
                 }
             }
-        },
+        }
         Err(e) => {
             let reply_code = match e.kind() {
                 io::ErrorKind::ConnectionRefused => REP_CONNECTION_REFUSED,
@@ -210,7 +336,7 @@ async fn handle_connect(mut client: TcpStream, addr: SocksAddr) -> io::Result<()
                 io::ErrorKind::HostUnreachable => REP_HOST_UNREACHABLE,
                 _ => REP_NETWORK_UNREACHABLE,
             };
-            
+
             let reply = Reply::new(reply_code, addr);
             reply.write_to(&mut client).await?;
             Err(e)

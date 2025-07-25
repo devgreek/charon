@@ -1,0 +1,94 @@
+   Compiling socks5-rs v0.1.0 (/home/kenny/Documents/workspace/socks5-rs)
+error[E0432]: unresolved import `rustls::client::ServerCertVerifier`
+   --> src/tls_client.rs:16:9
+    |
+16  |     use rustls::client::ServerCertVerifier;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `ServerCertVerifier` in `client`
+    |
+note: found an item that was configured out
+   --> /home/kenny/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-0.21.12/src/lib.rs:437:9
+    |
+437 |         ServerCertVerifier, WebPkiVerifier,
+    |         ^^^^^^^^^^^^^^^^^^
+note: the item is gated behind the `dangerous_configuration` feature
+   --> /home/kenny/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-0.21.12/src/lib.rs:433:11
+    |
+433 |     #[cfg(feature = "dangerous_configuration")]
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0433]: failed to resolve: could not find `ServerCertVerified` in `client`
+   --> src/tls_client.rs:31:32
+    |
+31  |             Ok(rustls::client::ServerCertVerified::assertion())
+    |                                ^^^^^^^^^^^^^^^^^^ could not find `ServerCertVerified` in `client`
+    |
+note: found an item that was configured out
+   --> /home/kenny/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-0.21.12/src/lib.rs:436:65
+    |
+436 |         CertificateTransparencyPolicy, HandshakeSignatureValid, ServerCertVerified,
+    |                                                                 ^^^^^^^^^^^^^^^^^^
+note: the item is gated behind the `dangerous_configuration` feature
+   --> /home/kenny/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-0.21.12/src/lib.rs:433:11
+    |
+433 |     #[cfg(feature = "dangerous_configuration")]
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0433]: failed to resolve: could not find `danger` in `client`
+   --> src/tls_client.rs:188:25
+    |
+188 |         rustls::client::danger::NoCertificateVerification {}
+    |                         ^^^^^^ could not find `danger` in `client`
+
+error[E0412]: cannot find type `ServerCertVerified` in module `rustls::client`
+   --> src/tls_client.rs:30:37
+    |
+30  |         ) -> Result<rustls::client::ServerCertVerified, Error> {
+    |                                     ^^^^^^^^^^^^^^^^^^ not found in `rustls::client`
+    |
+note: found an item that was configured out
+   --> /home/kenny/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-0.21.12/src/lib.rs:436:65
+    |
+436 |         CertificateTransparencyPolicy, HandshakeSignatureValid, ServerCertVerified,
+    |                                                                 ^^^^^^^^^^^^^^^^^^
+note: the item is gated behind the `dangerous_configuration` feature
+   --> /home/kenny/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-0.21.12/src/lib.rs:433:11
+    |
+433 |     #[cfg(feature = "dangerous_configuration")]
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `tokio::io::AsyncReadExt`
+   --> src/server.rs:176:9
+    |
+176 |     use tokio::io::AsyncReadExt;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `std::path::Path`
+ --> src/tls.rs:3:5
+  |
+3 | use std::path::Path;
+  |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `debug`
+ --> src/tls.rs:6:11
+  |
+6 | use log::{debug, error, info};
+  |           ^^^^^
+
+warning: unused imports: `AsyncReadExt` and `AsyncWriteExt`
+ --> src/tls.rs:9:17
+  |
+9 | use tokio::io::{AsyncReadExt, AsyncWriteExt};
+  |                 ^^^^^^^^^^^^  ^^^^^^^^^^^^^
+
+warning: unused import: `std::sync::Arc`
+  --> src/tls_client.rs:15:9
+   |
+15 |     use std::sync::Arc;
+   |         ^^^^^^^^^^^^^^
+
+Some errors have detailed explanations: E0412, E0432, E0433.
+For more information about an error, try `rustc --explain E0412`.
+warning: `socks5-rs` (lib) generated 5 warnings
+error: could not compile `socks5-rs` (lib) due to 4 previous errors; 5 warnings emitted

@@ -49,7 +49,7 @@ pub enum SocksAddr {
 }
 
 impl SocksAddr {
-    pub async fn read_from<R>(r: &mut R) -> io::Result<SocksAddr> 
+    pub async fn read_from<R>(r: &mut R) -> io::Result<SocksAddr>
     where
         R: AsyncRead + Unpin,
     {
@@ -60,23 +60,27 @@ impl SocksAddr {
                 r.read_exact(&mut addr_bytes).await?;
                 let port = r.read_u16().await?;
                 Ok(SocksAddr::Ipv4(Ipv4Addr::from(addr_bytes), port))
-            },
+            }
             ATYP_IPV6 => {
                 let mut addr_bytes = [0u8; 16];
                 r.read_exact(&mut addr_bytes).await?;
                 let port = r.read_u16().await?;
                 Ok(SocksAddr::Ipv6(Ipv6Addr::from(addr_bytes), port))
-            },
+            }
             ATYP_DOMAIN => {
                 let len = r.read_u8().await? as usize;
                 let mut domain = vec![0u8; len];
                 r.read_exact(&mut domain).await?;
-                let domain = String::from_utf8(domain)
-                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid domain name"))?;
+                let domain = String::from_utf8(domain).map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidData, "Invalid domain name")
+                })?;
                 let port = r.read_u16().await?;
                 Ok(SocksAddr::Domain(domain, port))
-            },
-            _ => Err(io::Error::new(io::ErrorKind::InvalidInput, "Unsupported address type")),
+            }
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Unsupported address type",
+            )),
         }
     }
 
@@ -89,21 +93,24 @@ impl SocksAddr {
                 w.write_u8(ATYP_IPV4).await?;
                 w.write_all(&addr.octets()).await?;
                 w.write_u16(*port).await?;
-            },
+            }
             SocksAddr::Ipv6(addr, port) => {
                 w.write_u8(ATYP_IPV6).await?;
                 w.write_all(&addr.octets()).await?;
                 w.write_u16(*port).await?;
-            },
+            }
             SocksAddr::Domain(domain, port) => {
                 if domain.len() > 255 {
-                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "Domain too long"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Domain too long",
+                    ));
                 }
                 w.write_u8(ATYP_DOMAIN).await?;
                 w.write_u8(domain.len() as u8).await?;
                 w.write_all(domain.as_bytes()).await?;
                 w.write_u16(*port).await?;
-            },
+            }
         }
         Ok(())
     }
@@ -111,7 +118,9 @@ impl SocksAddr {
     pub fn to_socket_addr(&self) -> Option<SocketAddr> {
         match self {
             SocksAddr::Ipv4(addr, port) => Some(SocketAddr::V4(SocketAddrV4::new(*addr, *port))),
-            SocksAddr::Ipv6(addr, port) => Some(SocketAddr::V6(SocketAddrV6::new(*addr, *port, 0, 0))),
+            SocksAddr::Ipv6(addr, port) => {
+                Some(SocketAddr::V6(SocketAddrV6::new(*addr, *port, 0, 0)))
+            }
             SocksAddr::Domain(_, _) => None, // Requires DNS resolution
         }
     }
@@ -164,21 +173,27 @@ impl UserPassAuth {
     {
         // Authentication subversion
         w.write_u8(AUTH_VERSION).await?;
-        
+
         // Username
         if self.username.len() > 255 {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Username too long"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Username too long",
+            ));
         }
         w.write_u8(self.username.len() as u8).await?;
         w.write_all(self.username.as_bytes()).await?;
-        
+
         // Password
         if self.password.len() > 255 {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Password too long"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Password too long",
+            ));
         }
         w.write_u8(self.password.len() as u8).await?;
         w.write_all(self.password.as_bytes()).await?;
-        
+
         w.flush().await?;
         Ok(())
     }
@@ -189,23 +204,26 @@ impl UserPassAuth {
     {
         let version = r.read_u8().await?;
         if version != AUTH_VERSION {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid authentication version"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid authentication version",
+            ));
         }
-        
+
         // Username
         let username_len = r.read_u8().await? as usize;
         let mut username_bytes = vec![0u8; username_len];
         r.read_exact(&mut username_bytes).await?;
         let username = String::from_utf8(username_bytes)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid username encoding"))?;
-        
+
         // Password
         let password_len = r.read_u8().await? as usize;
         let mut password_bytes = vec![0u8; password_len];
         r.read_exact(&mut password_bytes).await?;
         let password = String::from_utf8(password_bytes)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid password encoding"))?;
-        
+
         Ok(UserPassAuth { username, password })
     }
 }
@@ -217,7 +235,10 @@ impl HandshakeRequest {
     {
         let version = r.read_u8().await?;
         if version != SOCKS_VERSION {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "Unsupported SOCKS version"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Unsupported SOCKS version",
+            ));
         }
 
         let nmethods = r.read_u8().await?;
@@ -235,20 +256,31 @@ impl Request {
     {
         let version = r.read_u8().await?;
         if version != SOCKS_VERSION {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "Unsupported SOCKS version"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Unsupported SOCKS version",
+            ));
         }
 
         let command = r.read_u8().await?;
         let _reserved = r.read_u8().await?; // Reserved byte, ignored
         let addr = SocksAddr::read_from(r).await?;
 
-        Ok(Request { version, command, addr })
+        Ok(Request {
+            version,
+            command,
+            addr,
+        })
     }
 }
 
 impl Reply {
     pub fn new(reply: u8, addr: SocksAddr) -> Self {
-        Reply { version: SOCKS_VERSION, reply, addr }
+        Reply {
+            version: SOCKS_VERSION,
+            reply,
+            addr,
+        }
     }
 
     pub async fn write_to<W>(&self, w: &mut W) -> io::Result<()>

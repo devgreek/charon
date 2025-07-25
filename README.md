@@ -10,6 +10,8 @@ It uses Tokio for asynchronous I/O operations.
 - Full SOCKS5 protocol support
 - Client and server implementations
 - IPv4, IPv6, and domain name resolution
+- Username/password authentication (RFC 1929)
+- TLS encryption between client and proxy
 - Asynchronous I/O with Tokio
 
 ## Usage
@@ -51,6 +53,66 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Use the stream for communication
     // ...
 
+    Ok(())
+}
+```
+
+## TLS Support
+
+### Running a TLS-secured SOCKS5 server
+
+```rust
+use socks5_rs::tls::{TlsServer, TlsServerOptions, generate_self_signed_cert};
+use socks5_rs::server::ServerOptions;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize logging
+    env_logger::init();
+    
+    // Generate certificate if needed (for testing only)
+    if !std::path::Path::new("cert.pem").exists() {
+        generate_self_signed_cert()?;
+    }
+    
+    // Create server options
+    let server_options = ServerOptions::default();
+    
+    // Create TLS server options
+    let tls_options = TlsServerOptions {
+        server_options,
+        cert_path: "cert.pem".to_string(),
+        key_path: "key.pem".to_string(),
+    };
+    
+    // Create and run TLS server
+    let server = TlsServer::new(tls_options)?;
+    server.run("127.0.0.1:1081").await?;
+    
+    Ok(())
+}
+```
+
+### Using a TLS-secured SOCKS5 client
+
+```rust
+use socks5_rs::tls_client::TlsClient;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize logging
+    env_logger::init();
+    
+    // Create a TLS client
+    let client = TlsClient::new("localhost".to_string(), 1081);
+    
+    // Connect to a website through the TLS-secured SOCKS5 proxy
+    let mut stream = client.connect_to_domain("example.com", 80).await?;
+    
+    // Use the stream for communication
+    // ...
+    
     Ok(())
 }
 ```

@@ -1,0 +1,48 @@
+warning: unused import: `tokio::io::AsyncReadExt`
+   --> src/server.rs:176:9
+    |
+176 |     use tokio::io::AsyncReadExt;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `std::path::Path`
+ --> src/tls.rs:3:5
+  |
+3 | use std::path::Path;
+  |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `debug`
+ --> src/tls.rs:6:11
+  |
+6 | use log::{debug, error, info};
+  |           ^^^^^
+
+warning: unused imports: `AsyncReadExt` and `AsyncWriteExt`
+ --> src/tls.rs:9:17
+  |
+9 | use tokio::io::{AsyncReadExt, AsyncWriteExt};
+  |                 ^^^^^^^^^^^^  ^^^^^^^^^^^^^
+
+warning: unused import: `std::net::ToSocketAddrs`
+  --> src/tls_client.rs:99:13
+   |
+99 |         use std::net::ToSocketAddrs;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `socks5-rs` (lib) generated 5 warnings (run `cargo fix --lib -p socks5-rs` to apply 4 suggestions)
+warning: unused import: `std::error::Error`
+ --> examples/tls_server.rs:5:5
+  |
+5 | use std::error::Error;
+  |     ^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: `socks5-rs` (example "tls_server") generated 1 warning (run `cargo fix --example "tls_server"` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running `target/debug/examples/tls_server`
+[2025-06-21T14:10:57Z INFO  tls_server] Starting SOCKS5 TLS server on 127.0.0.1:1081
+[2025-06-21T14:10:57Z INFO  socks5_rs::tls] SOCKS5 TLS server listening on 127.0.0.1:1081
+[2025-06-21T14:11:11Z INFO  socks5_rs::tls] Accepted connection from: 127.0.0.1:41158
+[2025-06-21T14:11:11Z ERROR socks5_rs::tls] TLS handshake failed: received fatal alert: CertificateUnknown
